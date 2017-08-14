@@ -7,9 +7,9 @@
 
 #include "arm_compute/core/Types.h"
 
-
+using namespace arm_compute;
 namespace caffe2 {
-  class ARMConvOp final : public ConvPoolBase<CPUContext> {
+  class ARMConvOp final : public ConvPoolOpBase<CPUContext> {
   public:
     ARMConvOp(const OperatorDef& operator_def, Workspace* ws)
       : ConvPoolBase<CPUContext>(oeprator_def, ws) {}
