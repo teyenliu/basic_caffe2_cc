@@ -15,6 +15,8 @@ ${TARGET} : src/intro.o
 	$(CXX) $< $(CAFFE2_LINKFLAGS) -o $@
 clean:
 	rm src/*.o 
+	rm *.o
+	rm *.so
 	rm ${TARGET}
 
 src/intro.o : src/intro.cc
@@ -22,7 +24,7 @@ src/intro.o : src/intro.cc
 
 
 object:
-	g++ -g -fPIC -std=c++11 -mfpu=neon -I/usr/local/include -I/usr/local/include/eigen3 -I../ComputeLibrary -c operators/conv.cc
+	g++ -g -fPIC -std=c++11 -mfpu=neon -march=armv7-a -mthumb -mfloat-abi=hard -I/usr/local/include -I/usr/local/include/eigen3 -I../ComputeLibrary -c operators/conv.cc
 
 shared:
 	g++ -shared -o conv.so conv.o -lCaffe2_CPU -lprotobuf -lgflags -lglog -larm_compute
