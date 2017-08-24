@@ -6,6 +6,9 @@
 #include "arm_compute/runtime/NEON/NEFunctions.h"
 
 #include "arm_compute/core/Types.h"
+#include "arm_compute/core/Helpers.h"
+#include "arm_compute/core/ITensor.h"
+#include "arm_compute/runtime/Tensor.h"
 
 
 namespace caffe2 {
@@ -42,11 +45,50 @@ namespace caffe2 {
 	for (unsigned int j = 0; j < C; j++) {
           for (unsigned int k = 0; k < H; k++) {
 	    for (unsigned int h = 0; h < W; h++) {
-            dst[i * H * W * C+ j * H * W + k * W + h] = src[h * H * C + k * C + j + i];
+              dst[i * C * H * W + j * W * H + k * W + h] = src[h * H * C + k * C + j];
 	  }
 	}
 	}
       }
+    }
+
+    void fillsrc(arm_compute::Tensor &tensor, const float* src, int N, int C, int H, int W) {
+      arm_compute::Window window;
+      window.set(0, arm_compute::Window::Dimension(0, W, 1));
+      window.set(1, arm_compute::Window::Dimension(0, H, 1));
+      window.set(2, arm_compute::Window::Dimension(0, C, 1));
+      
+      arm_compute::execute_window_loop(window, [&](const arm_compute::Coordinates &id) {
+        float value = src[id.z() * H * W + id.y() * W + id.x()];
+	void *out = tensor.ptr_to_element(id);
+	*reinterpret_cast<float *>(out) = value;
+      });
+
+    }
+    void fillweights(arm_compute::Tensor &tensor, const float* src, int out, int in, int x, int y) {
+      arm_compute::Window window;
+      window.set(0, arm_compute::Window::Dimension(0, x, 1));
+      window.set(1, arm_compute::Window::Dimension(0, y, 1));
+      window.set(2, arm_compute::Window::Dimension(0, in, 1));
+      window.set(3, arm_compute::Window::Dimension(0, out, 1));
+      
+      arm_compute::execute_window_loop(window, [&](const arm_compute::Coordinates &id) {
+        float value = src[id[3] * in * x * y + id[2] * x * y + id[1] * x + id[0]];
+	void *out = tensor.ptr_to_element(id);
+	*reinterpret_cast<float *>(out) = value;
+      });
+    }
+    void filldst(arm_compute::Tensor &tensor, float* dst, int N, int C, int H, int W) {
+      arm_compute::Window window;
+      window.set(0, arm_compute::Window::Dimension(0, W, 1));
+      window.set(1, arm_compute::Window::Dimension(0, H, 1));
+      window.set(2, arm_compute::Window::Dimension(0, C, 1));
+      
+      arm_compute::execute_window_loop(window, [&](const arm_compute::Coordinates &id) {
+	void *out = tensor.ptr_to_element(id);
+        dst[id.z() * H * W + id.y() * W + id.x()] = *reinterpret_cast<float *>(out);
+      });
+
     }
     bool RunOnDeviceWithOrderNCHW() override {
       std::cout << "HELLO I AM ARM ENgine" << std::endl;
@@ -97,9 +139,18 @@ namespace caffe2 {
       const float *_buf = X.template data<float>();
       float* buf = reinterpret_cast<float *>(src.allocator()->data());
       if (X.dim32(1) == src_shape.z() && X.dim32(2) == src_shape.y() && X.dim32(3) == src_shape.x()) {
-        convertinput(buf, _buf, N, C, H, W);
+        //convertinput(buf, _buf, N, C, H, W);
+	fillsrc(src, _buf, N, C, H, W);
       }
-      
+      /*for (unsigned int i = 0; i < N; i++) {
+        for (unsigned int j = 0; j < C; j++) {
+	  for (unsigned int k = 0; k < H; k++) {
+	    for (unsigned int h = 0; h < W; h++) {
+	      std::cout << _buf[i * C * H * W + j * H * W + k * W + h] << " ";
+  	    }
+  	  }
+	}
+      }*/	
       /*
       uint8_t *tmp = buf.data();
       uint8_t *rt = new uint8_t(X.size());
@@ -116,7 +167,8 @@ namespace caffe2 {
       std::cout << filter.dim32(0) << " " << filter.dim32(1) << " " << X.dim32(0) << " " << filter.dim32(2) << " " << filter.dim32(3) << std::endl;
       std::cout << ofm_conv0 << " " << src_shape.z() << " " << kernel_x_conv0 << " " << std::endl;
       if (filter.dim32(0) == ofm_conv0 && filter.dim32(1) == src_shape.z() && filter.dim32(2) == kernel_x_conv0 && filter.dim32(3) == kernel_x_conv0) {
-        convertweight(weights, _weights, ofm_conv0, src_shape.z(), kernel_x_conv0);
+        //convertweight(weights, _weights, ofm_conv0, src_shape.z(), kernel_x_conv0);
+	fillweights(weights0, _weights, ofm_conv0, src_shape.z(), kernel_x_conv0, kernel_x_conv0);
       }
       
       std::cout << "start get biases data" << std::endl;
@@ -142,18 +194,6 @@ namespace caffe2 {
       
      
       conv0.run();
-      float* tmp = reinterpret_cast<float *>(src.allocator()->data());
-      for (unsigned int i = 0; i < N; i++) {
-        for (unsigned int j = 0; j < C; j++) {
-	  for (unsigned int x = 0; x < H; x++) {
-	    for (unsigned int y = 0; y < W; y++) {
-	      std::cout << tmp[y * H * C * N + x * C * N + j * N + i] << " ";
-	    }
-	  }
-	  std::cout << "one channel" << std::endl;
-	}
-	  std::cout << std::endl;
-      }
       
       /*float *rt = reinterpret_cast<float *>(weights0.allocator()->data());
       for (unsigned int i = 0; i < ofm_conv0; i++) {
@@ -181,10 +221,9 @@ namespace caffe2 {
       }*/
       
       float *_result = Y->template mutable_data<float>();
-      float *_resa = reinterpret_cast<float *>(out_conv0.allocator()->data());
       if (Y->dim32(0) == 1 && Y->dim32(1) == weight_shape[3]) {
 	std::cout << "dim correct " << std::endl;
-        convertres(_resa, _result, 1, weight_shape[3], oH, oW);
+        filldst(out_conv0, _result, 1, weight_shape[3], oH, oW);
       }
     }
   private:

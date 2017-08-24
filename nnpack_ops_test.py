@@ -42,9 +42,9 @@ def has_avx2():
 class NNPackOpsTest(hu.HypothesisTestCase):
     @given(stride=st.integers(1, 1),
            pad=st.integers(0, 0),
-           kernel=st.integers(5, 5),
-           size=st.integers(10 ,10),
-           input_channels=st.integers(1, 1),
+           kernel=st.integers(3, 5),
+           size=st.integers(5 , 32),
+           input_channels=st.integers(2, 2),
            output_channels=st.integers(2, 2),
            batch_size=st.integers(1, 1),
            groups=st.integers(1, 1))
@@ -60,12 +60,11 @@ class NNPackOpsTest(hu.HypothesisTestCase):
 
         X = np.random.rand(
             batch_size, input_channels, size, size).astype(np.float32)
-        print(X.reshape((size, size, input_channels)))
-        #for i in range(32):
-        #    print(X[0][0][i])
-        w = np.ones((
-            output_channels, input_channels, kernel, kernel)).astype(np.float32)
-        b = np.zeros((output_channels)).astype(np.float32)
+        for i in range(size):
+            print(X[0][0][i])
+        w = np.random.rand(
+            output_channels, input_channels, kernel, kernel).astype(np.float32)
+        b = np.random.rand(output_channels).astype(np.float32)
         order = "NCHW"
         outputs = {}
         for engine in ["", "ARM"]:
@@ -86,12 +85,11 @@ class NNPackOpsTest(hu.HypothesisTestCase):
             self.ws.create_blob("b").feed(b)
             self.ws.run(op)
             outputs[engine] = self.ws.blobs["Y"].fetch()
-        print(outputs)
         np.testing.assert_allclose(
             outputs[""],
             outputs["ARM"],
-            atol=1e-1,
-            rtol=1e-1)
+            atol=1e-4,
+            rtol=1e-4)
 
 if __name__ == "__main__":
     import unittest
