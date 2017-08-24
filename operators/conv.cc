@@ -13,7 +13,7 @@ namespace caffe2 {
   public:
     ARMConvOp(const OperatorDef& operator_def, Workspace* ws)
       : ConvPoolOpBase<CPUContext>(operator_def, ws) {}
-    bool convertinput(std::vector<uint8_t>& dst, const uint8_t* src, int N, int C, int H, int W) {
+    bool convertinput(float* dst, const float* src, int N, int C, int H, int W) {
       for (unsigned int i = 0; i < N; i++) {
 	for (unsigned int j = 0; j < C; j++) {
           for (unsigned int k = 0; k < H; k++) {
@@ -25,24 +25,24 @@ namespace caffe2 {
       }
       std::cout << "finish input converter " << std::endl;
     }
-    bool convertweight(std::vector<uint8_t>& dst, const uint8_t* src, int out, int in, int kernel) {
+    bool convertweight(float* dst, const float* src, int out, int in, int kernel) {
       for (uint8_t i = 0; i < out; i++) {
         for (uint8_t j = 0; j < in; j++) {
           for (uint8_t k = 0; k < kernel; k++) {
             for (uint8_t h = 0; h < kernel; h++) {
-	       dst[h * kernel * in * out + k * in * out + j * out + i] = src[i * in * kernel * kernel + j * kernel * kernel + k * kernel + h];
+	       dst[k * kernel * in * out + h * in * out + j * out + i] = src[i * in * kernel * kernel + j * kernel * kernel + k * kernel + h];
 	    }
 	  }
 	}
       }
       std::cout << "finish weight converter " << std::endl;
     }
-    bool convertres(uint8_t* src, uint8_t* dst, int N, int C, int H, int W) {
-      for (unsigned i = 0; i < N; i++) {
+    bool convertres(float* src, float* dst, int N, int C, int H, int W) {
+      for (unsigned int i = 0; i < N; i++) {
 	for (unsigned int j = 0; j < C; j++) {
           for (unsigned int k = 0; k < H; k++) {
 	    for (unsigned int h = 0; h < W; h++) {
-            dst[i * H * W * C+ j * H * W + k * W + h] = src[h * H * C + k * C + j];
+            dst[i * H * W * C+ j * H * W + k * W + h] = src[h * H * C + k * C + j + i];
 	  }
 	}
 	}
@@ -86,52 +86,102 @@ namespace caffe2 {
       out_conv0.allocator()->init(arm_compute::TensorInfo(out_shape, 1, arm_compute::DataType::F32)); 
 
       conv0.configure(&src, &weights0, &biases0, &out_conv0, arm_compute::PadStrideInfo());
-      std::cout << "start get x data" << std::endl;
-      const uint8_t *_buf = X.template data<uint8_t>();
-      std::vector<uint8_t> buf(X.size(), 0);
-      if (X.dim32(1) == src_shape.z() && X.dim32(2) == src_shape.y() && X.dim32(3) == src_shape.x()) {
-      convertinput(buf, _buf, N, C, H, W);
-      src.allocator()->allocate(buf);
-      }
+      src.allocator()->allocate();
 
+      weights0.allocator()->allocate();
+      biases0.allocator()->allocate();
+      out_conv0.allocator()->allocate();
+
+
+      std::cout << "start get x data" << std::endl;
+      const float *_buf = X.template data<float>();
+      float* buf = reinterpret_cast<float *>(src.allocator()->data());
+      if (X.dim32(1) == src_shape.z() && X.dim32(2) == src_shape.y() && X.dim32(3) == src_shape.x()) {
+        convertinput(buf, _buf, N, C, H, W);
+      }
+      
+      /*
+      uint8_t *tmp = buf.data();
+      uint8_t *rt = new uint8_t(X.size());
+      convertres(tmp, rt, N, C, H, W);
+      for (unsigned int i = 0; i < X.size(); i++) {
+        std::cout << unsigned(rt[i]) << " ";
+      }
+      */
       std::cout << "end get x data size is : " << X.size() << std::endl;
-      /*uint8_t *_res = src.allocator()->data();
-      int len = src.allocator()->length();
-      std::vector<uint8_t> res(_res, _res + len);
-      for (int i = 0; i < res.size(); i++) {
-	      std::cout << unsigned(res[i]) << " ";
-      }*/
       std::cout << "start get weight data" << std::endl;
-      const uint8_t *_weights = filter.template data<uint8_t>();
-      std::vector<uint8_t> weights(filter.size(), 0);
+
+      const float *_weights = filter.template data<float>();
+      float* weights = reinterpret_cast<float *>(weights0.allocator()->data());
       std::cout << filter.dim32(0) << " " << filter.dim32(1) << " " << X.dim32(0) << " " << filter.dim32(2) << " " << filter.dim32(3) << std::endl;
       std::cout << ofm_conv0 << " " << src_shape.z() << " " << kernel_x_conv0 << " " << std::endl;
       if (filter.dim32(0) == ofm_conv0 && filter.dim32(1) == src_shape.z() && filter.dim32(2) == kernel_x_conv0 && filter.dim32(3) == kernel_x_conv0) {
-      convertweight(weights, _weights, ofm_conv0, src_shape.z(), kernel_x_conv0);
-      for (int i = 0; i < weights.size(); i++) {
-         std::cout << unsigned(weights[i]) << " ";
+        convertweight(weights, _weights, ofm_conv0, src_shape.z(), kernel_x_conv0);
       }
-      std::cout << "start allocate weight data" << std::endl;
-      weights0.allocator()->allocate(weights);
-      std::cout << "finish initial weight data" << std::endl;
-	}
+      
       std::cout << "start get biases data" << std::endl;
-      const uint8_t *_bias = bias.template data<uint8_t>();
-      std::vector<uint8_t> biass(_bias, _bias + bias.size());
-      biases0.allocator()->allocate(biass);
+      const float *_bias = bias.template data<float>();
+      float *biass = reinterpret_cast<float *>(biases0.allocator()->data());
+      for (unsigned int i = 0; i < ofm_conv0; i++) {
+	      biass[i] = _bias[i];
+      }
       std::cout << "end get biases data" << std::endl;
 
-      out_conv0.allocator()->allocate();
-      conv0.run();
-      /*uint8_t *_res = weights0.allocator()->data();
-      int len = weights0.allocator()->length();
-      std::cout << "length of weight: " << len << std::endl;
-      for (int i = 0; i < len; i++) {
-	      std::cout << unsigned(*_res) << " ";
-	      _res++;
+      /*uint8_t *_resa = out_conv0.allocator()->data();
+      for (unsigned int i = 0; i < 1; i++) {
+        for (unsigned int j = 0; j < weight_shape[3]; j++) {
+	  for (unsigned int x = 0; x < oH; x++) {
+	    for (unsigned int y = 0; y < oW; y++) {
+	      std::cout << unsigned(_resa[y * oH * weight_shape[3] + x * weight_shape[3] + j + i]) << " ";
+	    }
+	  }
+	  std::cout << "one channel" << std::endl;
+	}
+	  std::cout << std::endl;
       }*/
-      uint8_t *_resa = out_conv0.allocator()->data();
-      uint8_t *_result = Y->template mutable_data<uint8_t>();
+      
+     
+      conv0.run();
+      float* tmp = reinterpret_cast<float *>(src.allocator()->data());
+      for (unsigned int i = 0; i < N; i++) {
+        for (unsigned int j = 0; j < C; j++) {
+	  for (unsigned int x = 0; x < H; x++) {
+	    for (unsigned int y = 0; y < W; y++) {
+	      std::cout << tmp[y * H * C * N + x * C * N + j * N + i] << " ";
+	    }
+	  }
+	  std::cout << "one channel" << std::endl;
+	}
+	  std::cout << std::endl;
+      }
+      
+      /*float *rt = reinterpret_cast<float *>(weights0.allocator()->data());
+      for (unsigned int i = 0; i < ofm_conv0; i++) {
+        for (unsigned int j = 0; j < src_shape[3]; j++) {
+	  for (unsigned int x = 0; x < kernel_x_conv0; x++) {
+	    for (unsigned int y = 0; y < kernel_x_conv0; y++) {
+	      std::cout << rt[x * kernel_x_conv0 * ofm_conv0 * src_shape[3] + y * ofm_conv0 * src_shape[3] + j * ofm_conv0 + i] << " ";
+	    }
+	  }
+	  std::cout << std::endl;
+	}
+      }
+      float *biast = reinterpret_cast<float *>(biases0.allocator()->data());
+      for (unsigned int i = 0; i < ofm_conv0; i++) {
+        std::cout << biast[i] << " ";
+      }
+      float* _resa = reinterpret_cast<float*>(out_conv0.allocator()->data());
+      for (unsigned int i = 0; i < oW; i++) {
+        for (unsigned int j = 0; j < oH; j++) {
+	  for (unsigned int x = 0; x < weight_shape[3]; x++) {
+	      std::cout << _resa[i * oH * weight_shape[3] + j * weight_shape[3] + x] << " ";
+	    }
+	  std::cout << "one channel" << std::endl;
+	}
+      }*/
+      
+      float *_result = Y->template mutable_data<float>();
+      float *_resa = reinterpret_cast<float *>(out_conv0.allocator()->data());
       if (Y->dim32(0) == 1 && Y->dim32(1) == weight_shape[3]) {
 	std::cout << "dim correct " << std::endl;
         convertres(_resa, _result, 1, weight_shape[3], oH, oW);
