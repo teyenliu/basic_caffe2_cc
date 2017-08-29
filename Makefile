@@ -33,6 +33,8 @@ conv:
 	g++ -g -fPIC -std=c++11 -mfpu=neon -march=armv7-a -mthumb -mfloat-abi=hard -I/usr/local/include -I/usr/local/include/eigen3 -I../ComputeLibrary -c operators/conv.cc
 relu:
 	g++ -g -fPIC -std=c++11 -mfpu=neon -march=armv7-a -mthumb -mfloat-abi=hard -I/usr/local/include -I/usr/local/include/eigen3 -I../ComputeLibrary -c operators/relu.cc
+fc:
+	g++ -g -fPIC -std=c++11 -mfpu=neon -march=armv7-a -mthumb -mfloat-abi=hard -I/usr/local/include -I/usr/local/include/eigen3 -I../ComputeLibrary -c operators/fc.cc
 
 shared:
-	g++ -shared -o arm.so conv.o maxpool.o softmax.o relu.o -lCaffe2_CPU -lprotobuf -lgflags -lglog -larm_compute
+	g++ -shared -o arm.so conv.o fc.o maxpool.o softmax.o relu.o -lCaffe2_CPU -lprotobuf -lgflags -lglog -larm_compute

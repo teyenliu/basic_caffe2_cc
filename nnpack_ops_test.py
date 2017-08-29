@@ -170,6 +170,54 @@ class NNPackOpsTest(hu.HypothesisTestCase):
             atol=1e-4,
             rtol=1e-4
             )
+
+    @given(n=st.integers(1, 2), m=st.integers(1, 1),
+           k=st.integers(3, 5),
+           multi_dim=st.sampled_from([False]),
+           **hu.gcs)
+    def test_fc(self, n, m, k, multi_dim, gc, dc):
+        X = np.random.rand(m, k).astype(np.float32) - 0.5
+        W = np.random.rand(n, k).astype(np.float32) - 0.5
+        b = np.random.rand(n).astype(np.float32) - 0.5
+        outputs = {}
+        
+        for engine in ["", "ARM"]:
+            op = core.CreateOperator(
+                "FC",
+                ["X", "W", "b"],
+                ["Y"],
+                engine=engine,
+            )
+            self.ws.create_blob("X").feed(X)
+            self.ws.create_blob("W").feed(W)
+            self.ws.create_blob("b").feed(b)
+            self.ws.run(op)
+            outputs[engine] = self.ws.blobs["Y"].fetch()
+        np.testing.assert_allclose(
+            outputs[""],
+            outputs["ARM"],
+            atol=1e-4,
+            rtol=1e-4
+            )
+
+
+#        def fc_op(X, W, b):
+#            return [np.dot(X, W.reshape(n, k).transpose()) + b.reshape(n)]
+
+ #       op = core.CreateOperator(
+  #          'FC',
+   #         ['X', 'W', 'b'],
+    #        'out'
+    #    )
+
+        # Check against numpy reference
+     #   np.testing.assert_allclose(
+     #       device_option=gc,
+     #       op=op,
+     #       inputs=[X, W, b],
+     #       reference=fc_op,
+     #   )
+
 if __name__ == "__main__":
     import unittest
     unittest.main()
