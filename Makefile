@@ -23,8 +23,16 @@ src/intro.o : src/intro.cc
 	$(CXX) src/intro.cc $(CXXFLAGS)  -c -o src/intro.o
 
 
-object:
+
+softmax:
+	g++ -g -fPIC -std=c++11 -mfpu=neon -march=armv7-a -mthumb -mfloat-abi=hard -I/usr/local/include -I/usr/local/include/eigen3 -I../ComputeLibrary -c operators/softmax.cc
+
+maxpool:
+	g++ -g -fPIC -std=c++11 -mfpu=neon -march=armv7-a -mthumb -mfloat-abi=hard -I/usr/local/include -I/usr/local/include/eigen3 -I../ComputeLibrary -c operators/maxpool.cc
+conv:
 	g++ -g -fPIC -std=c++11 -mfpu=neon -march=armv7-a -mthumb -mfloat-abi=hard -I/usr/local/include -I/usr/local/include/eigen3 -I../ComputeLibrary -c operators/conv.cc
+relu:
+	g++ -g -fPIC -std=c++11 -mfpu=neon -march=armv7-a -mthumb -mfloat-abi=hard -I/usr/local/include -I/usr/local/include/eigen3 -I../ComputeLibrary -c operators/relu.cc
 
 shared:
-	g++ -shared -o conv.so conv.o -lCaffe2_CPU -lprotobuf -lgflags -lglog -larm_compute
+	g++ -shared -o arm.so conv.o maxpool.o softmax.o relu.o -lCaffe2_CPU -lprotobuf -lgflags -lglog -larm_compute
