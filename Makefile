@@ -1,4 +1,4 @@
-EIGEN3_INCLUDE = /usr/local/include/eigen3/
+EIGEN3_INCLUDE = /usr/include/eigen3/
 CAFFE2_LIB = /usr/local/lib/
 
 CAFFE2_LINKFLAGS = -L${CAFFE2_LIB} -lCaffe2_CPU -lglog -lprotobuf -lgflags
